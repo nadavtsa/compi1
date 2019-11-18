@@ -1,4 +1,3 @@
-
 #use "pc.ml";;
 open PC;;
 
@@ -36,7 +35,7 @@ let rec sexpr_eq s1 s2 =
   | _ -> false;;
 
 let nt_boolean = 
-  let nt = disj (word_ci "#f") (word_ci "#t") in
+let nt = disj (word_ci "#f") (word_ci "#t")  in
   let last_nt s = (match (nt s) with
       | (['#'; 'f'], _) -> Bool(false)
       | (['#'; 't'], _) -> Bool(true)
@@ -45,31 +44,24 @@ let nt_boolean =
       | _ -> raise X_no_match) in 
   last_nt;;
 
-let visible_simple_char_nt = 
-  fun ch ->
-  if ((int_of_char ch)>32)
-  then Char(ch) 
-  else raise X_no_match;;
-
-let named_char_nt =
-  let nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
+let char_parser = 
+(* parser for chars which are greater than space in ASCII *)
+  let nt_visible_simple_char = const (fun ch -> ch > ' ')in
+(* parser for all of the named chars. *)
+  let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
   (word_ci "page");(word_ci "space")] in
-  let last_nt s = (match (nt s) with
-      | (['n'; 'u';'l'], _) -> Char(char_of_int 0)
-      | (['n'; 'e';'w';'l';'i';'n';'e'], _) -> Char(char_of_int 10)
-      | (['r'; 'e';'t';'u';'r';'n'], _) -> Char(char_of_int 13)
-      | (['t'; 'a';'b'], _) -> Char(char_of_int 9)
-      | (['p';'a';'g';'e'], _) -> Char(char_of_int 12)
-      | (['s';'p';'a';'c';'e'], _) -> Char(char_of_int 32)
-      | _ -> raise X_no_match) in 
-  last_nt;;
-
-
-let charPrefixnt = 
-  let nt_cp = (word_ci "#\\") in
-  let last_nt s = (match (nt_cp s) with
-      |(['#';'\\'],[c]) -> (c)
-      | _ -> raise X_no_match) in 
+(* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
+  let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s) in 
+(* thats out char parser *)
+  let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) in
+  let last_nt s= (match (char_nt s) with 
+      |((['#'; '\\'], ['n'; 'u'; 'l']), _) -> Char('\000')
+      |((['#'; '\\'], ['n'; 'e'; 'w'; 'l'; 'i'; 'n'; 'e']), _) -> Char('\n')
+      |((['#'; '\\'], ['r'; 'e'; 't'; 'u'; 'r'; 'n']), _) -> Char('\r')
+      |((['#'; '\\'], ['t'; 'a'; 'b']), _) -> Char('\t')
+      |((['#'; '\\'], ['p'; 'a'; 'g'; 'e']), _) -> Char('\012')
+      |((['#'; '\\'], ['s'; 'p'; 'a'; 'c'; 'e']), _) -> Char(' ')
+      |((['#'; '\\'], [_]), _) -> Char(list_to_string s).[2]) in 
   last_nt;;
 
 
@@ -82,12 +74,7 @@ let make_paired nt_left nt_right nt =
   nt;;
 
 let nt_whitespace = const (fun ch -> ch <= ' ');;
-
-let nt_char = 
-  let nt_c = disj (char 'A') (char 'B') in
-  let nt s = (match (nt_c s) with
-      |('A',_)-> char('A')
-      | _ -> raise X_no_match)in nt;; 
+ 
 
 let nt_whitespaces= star(char ' ' );;
 
