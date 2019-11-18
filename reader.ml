@@ -67,9 +67,8 @@ let named_char_nt =
 
 let charPrefixnt = 
   let nt_cp = (word_ci "#\\") in
-  let comb_nt = disj named_char_nt nt_whitespace
   let last_nt s = (match (nt_cp s) with
-      |(['#';'\\'],[c]) -> (comb_nt c)
+      |(['#';'\\'],[c]) -> (c)
       | _ -> raise X_no_match) in 
   last_nt;;
 
