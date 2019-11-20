@@ -35,7 +35,7 @@ let rec sexpr_eq s1 s2 =
   | _ -> false;;
 
 let nt_boolean = 
-let nt = disj (word_ci "#f") (word_ci "#t")  in
+  let nt = disj (word_ci "#f") (word_ci "#t")  in
   let last_nt s = (match (nt s) with
       | (['#'; 'f'], _) -> Bool(false)
       | (['#'; 't'], _) -> Bool(true)
@@ -44,25 +44,6 @@ let nt = disj (word_ci "#f") (word_ci "#t")  in
       | _ -> raise X_no_match) in 
   last_nt;;
 
-let char_parser = 
-(* parser for chars which are greater than space in ASCII *)
-  let nt_visible_simple_char = const (fun ch -> ch > ' ')in
-(* parser for all of the named chars. *)
-  let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
-  (word_ci "page");(word_ci "space")] in
-(* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
-  let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s) in 
-(* thats out char parser *)
-  let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) in
-  let last_nt s= (match (char_nt s) with 
-      |((['#'; '\\'], ['n'; 'u'; 'l']), _) -> Char('\000')
-      |((['#'; '\\'], ['n'; 'e'; 'w'; 'l'; 'i'; 'n'; 'e']), _) -> Char('\n')
-      |((['#'; '\\'], ['r'; 'e'; 't'; 'u'; 'r'; 'n']), _) -> Char('\r')
-      |((['#'; '\\'], ['t'; 'a'; 'b']), _) -> Char('\t')
-      |((['#'; '\\'], ['p'; 'a'; 'g'; 'e']), _) -> Char('\012')
-      |((['#'; '\\'], ['s'; 'p'; 'a'; 'c'; 'e']), _) -> Char(' ')
-      |((['#'; '\\'], [_]), _) -> Char(list_to_string s).[2]) in 
-  last_nt;;
 
 
 
@@ -74,11 +55,35 @@ let make_paired nt_left nt_right nt =
   nt;;
 
 let nt_whitespace = const (fun ch -> ch <= ' ');;
- 
+
+
+(* parser for chars which are greater than space in ASCII *)
+let nt_visible_simple_char = const (fun ch -> ch > ' ');;
+(* parser for all of the named chars. *)
+let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
+                         (word_ci "page");(word_ci "space")] ;;
+(* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
+let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s);; 
+(* thats out char parser *)
+let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) ;;
+let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix), (list_to_string rest)) with
+    | ("#\\", "tab") -> Char '\t'
+    | ("#\\", "newline") -> Char '\n'
+    | ("#\\", "space") -> Char ' '
+    | ("#\\", "return") -> Char '\r'
+    | ("#\\", "page") -> Char '\012'
+    | ("#\\", "nul") -> Char '\000'
+    | ("#\\", c) -> Char c.[0]
+    | (_, _) -> raise X_no_match);;
+
 
 let nt_whitespaces= star(char ' ' );;
 
 let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+
+let tok_lparen =let lp = char '(' in
+  let spaced= caten(caten nt_whitespaces lp) nt_whitespaces in
+  pack spaced (fun ((l, p), r) -> p);;
 
 module Reader: sig
   val read_sexpr : string -> sexpr
