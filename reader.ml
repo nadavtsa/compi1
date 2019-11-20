@@ -33,17 +33,42 @@ let rec sexpr_eq s1 s2 =
   | TaggedSexpr(name1, expr1), TaggedSexpr(name2, expr2) -> (name1 = name2) && (sexpr_eq expr1 expr2) 
   | TagRef(name1), TagRef(name2) -> name1 = name2
   | _ -> false;;
-
-let nt_boolean = 
+(* MAOR *)
+let boolean_parser = 
   let nt = disj (word_ci "#f") (word_ci "#t")  in
-  let last_nt s = (match (nt s) with
-      | (['#'; 'f'], _) -> Bool(false)
-      | (['#'; 't'], _) -> Bool(true)
-      | (['#'; 'T'], _) -> Bool(true)
-      | (['#'; 'F'], _) -> Bool(false)
+  let last_nt  = pack nt (fun (prefix) -> match((list_to_string prefix)) with
+      |  "#f" -> Bool(false)
+      |  "#F" -> Bool(false)
+      | "#t" -> Bool(true)
+      | "#T" -> Bool(true)
       | _ -> raise X_no_match) in 
   last_nt;;
 
+(* MAOR *)
+let symbol_parser = 
+let symbol_list_nt = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
+  (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
+  ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":")] in
+let a_z_nt = range_ci 'A' 'z' in
+let temp_a_z_nt = pack (caten a_z_nt nt_epsilon) (fun (e,s) -> e::s)in
+let numbers_range_nt = range_ci '0' '9' in
+let temp_numbers_range_nt = pack (caten numbers_range_nt nt_epsilon) (fun (e,s) -> e::s)in
+let symbol_disj_nt = disj_list [symbol_list_nt;temp_a_z_nt;temp_numbers_range_nt] in
+let sym_parse = pack symbol_disj_nt (fun (prefix) -> match ((list_to_string prefix)) with
+    | "!" -> Symbol "!"
+| "$" -> Symbol "$"
+ | "^"-> Symbol "^"
+| "*"-> Symbol "*"
+|"-" -> Symbol "-"
+|"_" -> Symbol "_"
+|"=" -> Symbol "="
+|"+" -> Symbol "+" 
+|"<" -> Symbol "<"
+|">" -> Symbol ">"
+|"?" -> Symbol "?"
+|"/" -> Symbol "/" 
+|":" -> Symbol ":"
+| _ -> raise X_no_match) in sym_parse ;;
 
 
 
@@ -55,17 +80,17 @@ let make_paired nt_left nt_right nt =
   nt;;
 
 let nt_whitespace = const (fun ch -> ch <= ' ');;
-
-
+(* MAOR *)
+let char_parser = 
 (* parser for chars which are greater than space in ASCII *)
-let nt_visible_simple_char = const (fun ch -> ch > ' ');;
+let nt_visible_simple_char = const (fun ch -> ch > ' ')in
 (* parser for all of the named chars. *)
 let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
-                         (word_ci "page");(word_ci "space")] ;;
+                         (word_ci "page");(word_ci "space")] in
 (* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
-let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s);; 
+let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s)in
 (* thats out char parser *)
-let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) ;;
+let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) in
 let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix), (list_to_string rest)) with
     | ("#\\", "tab") -> Char '\t'
     | ("#\\", "newline") -> Char '\n'
@@ -74,12 +99,24 @@ let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix)
     | ("#\\", "page") -> Char '\012'
     | ("#\\", "nul") -> Char '\000'
     | ("#\\", c) -> Char c.[0]
-    | (_, _) -> raise X_no_match);;
+    | (_, _) -> raise X_no_match) in char_nt2;;
 
 
 let nt_whitespaces= star(char ' ' );;
-
+let nt_comments = star(char ';');;
 let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+
+
+(* string MAOR *)
+(* special nots *)
+
+let meta_nt = disj_list [(word_ci "\r");(word_ci "\n");(word_ci "\t");(word_ci "\f");
+(word_ci "\\");(word_ci "\"")]
+let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
+let sting_temp_nt = pack (caten string_Literal_Char_nt nt_epsilon) (fun (e,s) -> e::s)
+let stringChar_nt = disj meta_nt sting_temp_nt;;
+let string_without_quotes = make_paired (char '\"') (char '\"') stringChar_nt;;
+let string_pareser = star string_without_quotes;;
 
 let tok_lparen =let lp = char '(' in
   let spaced= caten(caten nt_whitespaces lp) nt_whitespaces in
