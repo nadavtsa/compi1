@@ -102,10 +102,65 @@ let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix)
     | (_, _) -> raise X_no_match) in char_nt2;;
 
 
-let nt_whitespaces= star(char ' ' );;
-let nt_comments = star(char ';');;
+let nt_whitespaces= star(const (fun ch -> ch <= ' '));;
+let nt_comments = 
+  let nt_semicolon = char ';' in
+  let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
+  let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
+  make_spaced (star nt_comments);;
 let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+let make_seperated_of_comments nt = make_paired nt_comments nt_comments nt;;
 
+
+let nt_number = 
+  let nt_sign = disj (char '+') (char '-') in
+  let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e,s) -> e::s) in
+  let nt_digits = plus (range_ci '0' '9') in
+  let nt_digits = pack nt_digits (fun digits ->
+                                    List.map (fun a -> (Char.code a) - (Char.code '0')) digits) in
+  let nt_unsigned_integer = pack nt_digits (fun digits ->
+                                              List.fold_left (fun a b -> 10 * a + b) 0 digits) in
+  let signed_integer = pack (caten nt_sign nt_unsigned_integer) (fun (sign, integer) -> 
+                                                                  match sign with 
+                                                                  | ['+'] -> Number(Int integer)
+                                                                  | ['-'] -> Number (Int ((-1) * integer))
+                                                                  | _ -> raise X_no_match) in
+  let nt_dot = char '.' in
+  let nt_fraction = caten nt_dot nt_digits in
+  let nt_fraction = pack nt_fraction (fun (ch, digits) -> (digits, (List.length digits))) in
+  let nt_fraction = pack nt_fraction (fun (digits, length) -> 
+                                      let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
+                                      let mult = 10. ** ((float_of_int length) *. (-1.)) in
+                                      let frac = (float_of_int frac) *. mult in
+                                      frac) in
+  let nt_float = pack (caten nt_unsigned_integer nt_fraction) (fun (integer, fraction) -> 
+                                                          (float_of_int integer) +. fraction) in
+  let nt_float = caten nt_sign nt_float in 
+  let nt_float = pack (nt_float) (fun (sign, num) ->
+                                match sign with 
+                                | ['+'] -> Number(Float num)
+                                | ['-'] -> Number(Float ((float_of_int (-1)) *. num))
+                                | _ -> raise X_no_match) in
+  let nt_number = disj nt_float signed_integer in
+  let nt_number = make_spaced nt_number in
+  let nt_number = make_seperated_of_comments nt_number in
+  nt_number;;
+
+  let nt_nil = 
+    let nt_lparen = make_spaced (char (char_of_int 40)) in
+    let nt_rparen = make_spaced (char (char_of_int 41)) in
+    let nt_nil = pack (caten nt_lparen nt_rparen) (fun (lparen, rparen) -> Nil) in
+    let nt_nil = make_seperated_of_comments nt_nil in
+    nt_nil;;
+
+
+
+
+  
+
+
+  
+  
 
 (* string MAOR *)
 (* special nots *)
