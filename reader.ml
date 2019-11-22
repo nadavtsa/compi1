@@ -47,6 +47,24 @@ let make_paired nt_left nt_right nt =
 
 let nt_whitespace = const (fun ch -> ch <= ' ');;
 (* MAOR *)
+
+
+
+let nt_whitespaces= star(const (fun ch -> ch <= ' '));;
+
+let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+
+let nt_comments = 
+  let nt_semicolon = char ';' in
+  let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
+  let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
+  make_spaced (star nt_comments);;
+
+let make_seperated_of_comments nt = make_paired nt_comments nt_comments nt;;
+
+let make_spaced_and_commented nt = make_seperated_of_comments (make_spaced nt);;
+
+
 let char_parser = 
   (* parser for chars which are greater than space in ASCII *)
   let nt_visible_simple_char = const (fun ch -> ch > ' ')in
@@ -66,26 +84,7 @@ let char_parser =
       | ("#\\", "nul") -> Char '\000'
       | ("#\\", c) -> Char c.[0]
       | (_, _) -> raise X_no_match) in 
-  char_nt2;;
-
-
-let nt_whitespaces= star(const (fun ch -> ch <= ' '));;
-
-let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
-
-let nt_comments = 
-  let nt_semicolon = char ';' in
-  let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
-  let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
-  make_spaced (star nt_comments);;
-
-
-
-
-
-let make_seperated_of_comments nt = make_paired nt_comments nt_comments nt;;
-
-let make_spaced_and_commented nt = make_seperated_of_comments (make_spaced nt);;
+  make_spaced_and_commented char_nt2;;
 
 
 let boolean_parser = 
@@ -147,93 +146,76 @@ let nt_number =
   let nt_number = disj nt_float signed_integer in
   let nt_number = make_spaced nt_number in
   let nt_number = make_seperated_of_comments nt_number in
-  nt_number;;
+  make_spaced_and_commented nt_number;;
 
-  let nt_nil = 
-    let nt_lparen = make_spaced (char (char_of_int 40)) in
-    let nt_rparen = make_spaced (char (char_of_int 41)) in
-    let nt_nil = pack (caten nt_lparen nt_rparen) (fun (lparen, rparen) -> Nil) in
-    let nt_nil = make_seperated_of_comments nt_nil in
-    nt_nil;;
+let nt_nil = 
+  let nt_lparen = make_spaced (char (char_of_int 40)) in
+  let nt_rparen = make_spaced (char (char_of_int 41)) in
+  let nt_nil = pack (caten nt_lparen nt_rparen) (fun (lparen, rparen) -> Nil) in
+  let nt_nil = make_seperated_of_comments nt_nil in
+  nt_nil;;
   
-  let make_normal_paranthesized nt = 
-    make_paired (make_spaced (char (char_of_int 40))) (make_spaced (char (char_of_int 41))) nt;;
+let make_normal_paranthesized nt = 
+  make_paired (make_spaced (char (char_of_int 40))) (make_spaced (char (char_of_int 41))) nt;;
   
 
-  let do_nothing () = ();;
+let do_nothing () = ();;
 
-  let reverse_list lst =
-    let rec aux acc = function
-      | [] -> acc
-      | h::t -> aux (h::acc) t in
-    aux [] lst;;
+let reverse_list lst =
+  let rec aux acc = function
+    | [] -> acc
+    | h::t -> aux (h::acc) t in
+  aux [] lst;;
 
+let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
+let nt_rparen = make_spaced_and_commented (char (char_of_int 41));; 
+let nt_dot = make_spaced_and_commented (char '.');;
 
   
-let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number; symbol_parser; nt_list] exp
+let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number; symbol_parser; nt_empty_list; nt_not_dotted_list;
+nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
+
+    
+    and nt_empty_list exp = 
+      let no_parens = pack (nt_whitespaces) (fun exp -> Nil) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_not_dotted_list exp = 
+      let no_parens = pack (plus all_exps) (fun exps ->
+                                            List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_dotted_list exp = 
+      let nt_spaced_exp = make_spaced_and_commented all_exps in
+      let nt_car_and_dot = pack (caten nt_spaced_exp nt_dot) (fun (car, dot) -> car) in
+      let no_parens = pack (caten nt_car_and_dot nt_spaced_exp) (fun (car, cdr) -> Pair(car, cdr)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_quoted exp = 
+      let nt_quote = char (char_of_int 39) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_quasi_quote exp = 
+      let nt_quote = char (char_of_int 96) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quasiquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted_spliced exp =
+      let nt_quote = word_ci ",@" in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote-splicing"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted exp = 
+      let nt_quote = char ',' in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;;
 
     
     
-    and nt_list exp = 
-      let nt_lparen = make_spaced_and_commented (char (char_of_int 40)) in
-      let nt_rparen = make_spaced_and_commented (char (char_of_int 41)) in
-      let nt_dot = make_spaced_and_commented (char '.') in
-      (*let nt_list = 
-        let nt_start_of_list = pack (caten nt_lparen (plus all_exps)) (fun (paren, exps) -> exps) in
-        let nt_end_of_list = pack (caten nt_start_of_list nt_rparen) (fun (exps, paren) -> exps) in
-        let nt_pairs = pack (nt_end_of_list) (fun exps ->
-                                              List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in*)
-      let nt_not_dotted_list = 
-        let no_parens = pack (plus all_exps) (fun exps ->
-                                              List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in
-        let with_parens = make_normal_paranthesized no_parens in
-        disj no_parens with_parens in
-
-      let nt_empty_list = 
-        let no_parens = pack (nt_whitespaces) (fun exp -> Nil) in
-        let with_parens = make_normal_paranthesized no_parens in
-        disj no_parens with_parens in
-        (*let nt_empty_list = make_spaced_and_commented (caten nt_lparen nt_rparen) in
-        let nt_empty_list = pack (nt_empty_list) (fun (lparen, rparen) -> Nil) in
-        nt_empty_list in*)
-
-      let nt_dotted_list =
-        let nt_spaced_exp = make_spaced_and_commented all_exps in
-        let nt_car_and_dot = pack (caten nt_spaced_exp nt_dot) (fun (car, dot) -> car) in
-        let no_parens = pack (caten nt_car_and_dot nt_spaced_exp) (fun (car, cdr) -> Pair(car, cdr)) in
-        let with_parens = make_normal_paranthesized no_parens in
-        disj no_parens with_parens in
-      
-      (*let nt_dotted_list =
-        let nt_spaced_exp = make_spaced_and_commented all_exps in
-        let nt_separated_exp = make_seperated_of_comments nt_spaced_exp in
-        let nt_car_and_dot = pack (caten nt_separated_exp nt_dot) (fun (car, dot) -> car) in
-        let nt_car_and_cdr = pack (caten nt_car_and_dot nt_separated_exp) (fun (car, cdr) -> Pair(car, cdr)) in
-        let nt_paranthesized_pair = make_normal_paranthesized nt_car_and_cdr in
-        let nt_dotted_list = disj nt_car_and_cdr nt_paranthesized_pair in
-        let nt_dotted_list = make_normal_paranthesized nt_dotted_list in
-        let nt_dotted_list = make_spaced_and_commented nt_dotted_list in 
-        nt_dotted_list in*)
-      (make_normal_paranthesized (disj_list[nt_not_dotted_list; nt_dotted_list; nt_empty_list])) exp;;
-    
-    
-
-
-  
-
-  
-
-
-
-
-
-
-
-  
-
-
-  
-  
 
 (* string MAOR *)
 (* special nots *)
