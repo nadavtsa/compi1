@@ -95,23 +95,29 @@ let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix)
     | ("#\\", c) -> Char c.[0]
     | (_, _) -> raise X_no_match) in char_nt2;;
 
-
+let ntA = char 'A';;
+let ntB = char 'B';;
+let ntAB = caten ntA ntB;;
 
 
 (* string MAOR *)
 (* special nots *)
-
-let meta_nt = disj_list [(word_ci "\\r");(word_ci "\\n");(word_ci "\\t");(word_ci "\\f");
-(word_ci "\\\\");(word_ci "\"")]
+let backslash = char '\\';;
+let meta_nt = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
+(char '\\');(char '\"')];;
+let meta_chars = caten backslash meta_nt;;
+let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
+| (('\\','r')) -> '\r'
+| (('\\','n')) -> '\n'
+| (('\\','t')) -> '\t'
+| (('\\','f')) -> char_of_int 12
+| (('\\','\"')) -> '\"'
+| (('\\','\\')) -> '\\'
+|_ ->raise X_no_match );;
 let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
-let sting_temp_nt = pack (caten string_Literal_Char_nt nt_epsilon) (fun (e,s) -> e::s)
-let stringChar_nt = star(disj meta_nt sting_temp_nt);;
-let star_stringChar_nt = pack stringChar_nt (fun (list_of_lists) ->
-                                          List.flatten list_of_lists);;
-let string_parser = pack star_stringChar_nt (fun nadav -> String(list_to_string nadav)) 
-
-
-
+let string_char = disj string_Literal_Char_nt convert_to_char_nt;;
+let string_tok = star string_char;;
+let string_parser = pack string_tok (fun s -> String(list_to_string s));;
 
 
 
