@@ -188,14 +188,3 @@ end;; (* end of struct PC *)
 
 (* end-of-input *)
 
-
-
-(*let nt_dot = char '.' in
-  let nt_fraction = caten nt_dot nt_digits in
-  let nt_fraction = pack nt_fraction (fun (ch, digits) -> (digits, (List.length digits))) in
-  let nt_fraction = pack nt_fraction (fun (digits, length) -> 
-                                      let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
-                                      let mult = 10. ** ((float_of_int length) *. (-1.)) in
-                                      let frac = frac *. mult in
-                                      frac) in
-  nt_fraction;;*) 

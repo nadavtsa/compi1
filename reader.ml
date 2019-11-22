@@ -54,13 +54,24 @@ let nt_whitespaces= star(const (fun ch -> ch <= ' '));;
 
 let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
 
-let nt_comments = 
+let nt_line_comments = 
   let nt_semicolon = char ';' in
   let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
   make_spaced (star nt_comments);;
 
-let make_seperated_of_comments nt = make_paired nt_comments nt_comments nt;;
+let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;;
+
+let rec nt_all_sexpr_comments = 
+  fun s ->
+  try ((word_ci "#;") s)
+  
+  
+
+
+
+
+let make_seperated_of_comments nt = make_paired nt_line_comments nt_line_comments nt;;
 
 let make_spaced_and_commented nt = make_seperated_of_comments (make_spaced nt);;
 
@@ -213,6 +224,13 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
       let nt_quote = char ',' in
       let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
       (make_spaced_and_commented nt_quoted) exp;;
+    
+    (*and nt_sexpr_comments = 
+      let nt_comment_prefix = make_spaced (word_ci "#;") in
+      let nt_commented_sexpr = caten nt_comment_prefix all_exps
+      let rec nt_comment = try nt_commented_sexpr
+                           with X_no_match -> nt_skip_comment in
+      nt_comment;;*)
 
     
     
