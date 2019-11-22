@@ -43,6 +43,7 @@ let make_paired nt_left nt_right nt =
 
 let nt_whitespace = const (fun ch -> ch <= ' ');;
 
+
 let nt_whitespaces= star(char ' ' );;
 let nt_comments = star(char ';');;
 
@@ -57,6 +58,11 @@ let boolean_parser =
       | _ -> raise X_no_match) in 
   let last_nt = make_spaced last_nt in
   last_nt;;
+
+(* sexpr comments *)
+let sexps_comments_chars = word_ci "#;";;
+let space_comments = make_spaced sexps_comments_chars;;
+
 
 
 (* MAOR *)
@@ -95,17 +101,12 @@ let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix)
     | ("#\\", c) -> Char c.[0]
     | (_, _) -> raise X_no_match) in char_nt2;;
 
-let ntA = char 'A';;
-let ntB = char 'B';;
-let ntAB = caten ntA ntB;;
 
-
-(* string MAOR *)
-(* special nots *)
+let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
 let backslash = char '\\';;
-let meta_nt = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
+let meta_list = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
 (char '\\');(char '\"')];;
-let meta_chars = caten backslash meta_nt;;
+let meta_chars = caten backslash meta_list;;
 let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
 | (('\\','r')) -> '\r'
 | (('\\','n')) -> '\n'
@@ -114,11 +115,10 @@ let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
 | (('\\','\"')) -> '\"'
 | (('\\','\\')) -> '\\'
 |_ ->raise X_no_match );;
-let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
 let string_char = disj string_Literal_Char_nt convert_to_char_nt;;
-let string_tok = star string_char;;
-let string_parser = pack string_tok (fun s -> String(list_to_string s));;
-
+let star_string_char = star string_char;;
+let string_tok = pack (make_paired (char '\"') (char '\"') star_string_char) (fun s -> 
+String(list_to_string s));;
 
 
 
