@@ -58,11 +58,8 @@ let nt_line_comments =
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
   make_spaced (star nt_comments);;
 
-(* let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;; *)
+let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;;
 
-(* let rec nt_all_sexpr_comments = 
-  fun s ->
-  try ((word_ci "#;") s) *)
   
   
 
@@ -120,23 +117,25 @@ let symbol_parser =
   make_spaced_and_commented sym_parse;;
 
 (* STRING *)
-let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
-let backslash = char '\\';;
-let meta_list = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
-(char '\\');(char '\"')];;
-let meta_chars = caten backslash meta_list;;
-let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
-| (('\\','r')) -> '\r'
-| (('\\','n')) -> '\n'
-| (('\\','t')) -> '\t'
-| (('\\','f')) -> char_of_int 12
-| (('\\','\"')) -> '\"'
-| (('\\','\\')) -> '\\'
-|_ ->raise X_no_match );;
-let string_char = disj string_Literal_Char_nt convert_to_char_nt;;
-let star_string_char = star string_char;;
-let string_tok = pack (make_paired (char '\"') (char '\"') star_string_char) (fun s -> 
-String(list_to_string s));;
+let nt_string = 
+  let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\') in
+  let backslash = char '\\' in
+  let meta_list = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
+                                (char '\\');(char '\"')] in
+  let meta_chars = caten backslash meta_list in
+  let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
+                                                    | (('\\','r')) -> '\r'
+                                                    | (('\\','n')) -> '\n'
+                                                    | (('\\','t')) -> '\t'
+                                                    | (('\\','f')) -> char_of_int 12
+                                                    | (('\\','\"')) -> '\"'
+                                                    | (('\\','\\')) -> '\\'
+                                                    |_ ->raise X_no_match ) in
+  let string_char = disj string_Literal_Char_nt convert_to_char_nt in
+  let star_string_char = star string_char in
+  let string_tok = pack (make_paired (char '\"') (char '\"') star_string_char) (fun s -> 
+                                                      String(list_to_string s)) in
+  make_spaced_and_commented string_tok;;
 
 
 let nt_number = 
@@ -254,7 +253,7 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
 (* special nots *)
 
 
-let meta_nt = disj_list [(word_ci "\r");(word_ci "\n");(word_ci "\t");(word_ci "\f");
+(* let meta_nt = disj_list [(word_ci "\r");(word_ci "\n");(word_ci "\t");(word_ci "\f");
 (word_ci "\\");(word_ci "\"")];;
 
 
@@ -270,7 +269,7 @@ let stringChar_nt = disj meta_nt sting_temp_nt;;
 let string_without_quotes = make_paired (char '\"') (char '\"') stringChar_nt;;
 
 
-let string_pareser = star string_without_quotes;;
+let string_pareser = star string_without_quotes;; *)
 
 let tok_lparen =
   let lp = char '(' in
