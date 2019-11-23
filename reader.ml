@@ -3,7 +3,6 @@ open PC;;
 
 exception X_not_yet_implemented;;
 exception X_this_should_not_happen;;
-
 type number =
   | Int of int
   | Float of float;;
@@ -35,6 +34,9 @@ let rec sexpr_eq s1 s2 =
   | _ -> false;;
 (* MAOR *)
 
+
+
+
 let make_paired nt_left nt_right nt =
   let nt = caten nt_left nt in
   let nt = pack nt (function (_, e) -> e) in
@@ -42,29 +44,55 @@ let make_paired nt_left nt_right nt =
   let nt = pack nt (function (e, _) -> e) in
   nt;;
 
-let nt_whitespace = const (fun ch -> ch <= ' ');;
+(* MAOR *)
 
 
-let nt_whitespaces= star(char ' ' );;
 
+let nt_whitespaces= star(const (fun ch -> ch <= ' '));;
 
-let nt_comments = 
+let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+
+let nt_line_comments = 
   let nt_semicolon = char ';' in
   let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
   make_spaced (star nt_comments);;
 
+(* let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;; *)
 
+(* let rec nt_all_sexpr_comments = 
+  fun s ->
+  try ((word_ci "#;") s) *)
+  
+  
 
-
-
-let make_seperated_of_comments nt = make_paired nt_comments nt_comments nt;;
+let make_seperated_of_comments nt = make_paired nt_line_comments nt_line_comments nt;;
 
 let make_spaced_and_commented nt = make_seperated_of_comments (make_spaced nt);;
 
 
+let char_parser = 
+  (* parser for chars which are greater than space in ASCII *)
+  let nt_visible_simple_char = const (fun ch -> ch > ' ')in
+  (* parser for all of the named chars. *)
+  let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
+                           (word_ci "page");(word_ci "space")] in
+  (* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
+  let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s)in
+  (* thats out char parser *)
+  let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) in
+  let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix), (list_to_string rest)) with
+      | ("#\\", "tab") -> Char '\t'
+      | ("#\\", "newline") -> Char '\n'
+      | ("#\\", "space") -> Char ' '
+      | ("#\\", "return") -> Char '\r'
+      | ("#\\", "page") -> Char '\012'
+      | ("#\\", "nul") -> Char '\000'
+      | ("#\\", c) -> Char c.[0]
+      | (_, _) -> raise X_no_match) in 
+  make_spaced_and_commented char_nt2;;
 
-let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
+
 let boolean_parser = 
   let nt = disj (word_ci "#f") (word_ci "#t")  in
   let last_nt  = pack nt (fun (prefix) -> match((list_to_string prefix)) with
@@ -74,54 +102,22 @@ let boolean_parser =
       | "#T" -> Bool(true)
       | _ -> raise X_no_match) in 
   let last_nt = make_spaced last_nt in
-  last_nt;;
-
-(* sexpr comments *)
-
-let sexps_comments_chars = word_ci "#;";;
-
-(* let space_comments = make_spaced sexps_comments_chars;; *)
-
-
+  make_spaced_and_commented last_nt;;
 
 (* MAOR *)
 let symbol_parser = 
-let symbol_list_nt = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
-  (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
-  ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":")] in
-let a_z_nt_capital = plus(range_ci 'A' 'Z') in
-let a_z_nt = plus(range_ci 'a' 'z') in
-let a_z_nt = pack (disj a_z_nt_capital a_z_nt) (List.map lowercase_ascii)in
-let numbers_range_nt = plus(range_ci '0' '9') in
-let symbol_disj_nt = plus (disj_list [symbol_list_nt;a_z_nt;numbers_range_nt]) in
-let symbol_disj_nt = pack symbol_disj_nt (fun (list_of_lists) ->
+  let symbol_list_nt = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
+    (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
+    ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":")] in
+  let a_z_nt_capital = plus(range_ci 'A' 'Z') in
+  let a_z_nt = plus(range_ci 'a' 'z') in
+  let a_z_nt = pack (disj a_z_nt_capital a_z_nt) (List.map lowercase_ascii)in
+  let numbers_range_nt = plus(range_ci '0' '9') in
+  let symbol_disj_nt = plus (disj_list [symbol_list_nt;a_z_nt;numbers_range_nt]) in
+  let symbol_disj_nt = pack symbol_disj_nt (fun (list_of_lists) ->
                                           List.flatten list_of_lists) in
-let sym_parse_tok = pack symbol_disj_nt (fun (prefix) ->  (Symbol(list_to_string prefix))) in 
-let sym_parse = make_spaced_and_commented sym_parse_tok in sym_parse;;
-
-
-
-(* MAOR *)
-let char_parser = 
-(* parser for chars which are greater than space in ASCII *)
-let nt_visible_simple_char = const (fun ch -> ch > ' ')in
-(* parser for all of the named chars. *)
-let list_nt = disj_list [(word_ci "nul");(word_ci "newline") ;(word_ci "return");(word_ci "tab");
-                         (word_ci "page");(word_ci "space")] in
-(* beacuse the nt_visible_simple_char is just a char and we need char list this func' solves it *)
-let temp_nt = pack (caten nt_visible_simple_char nt_epsilon) (fun (e,s) -> e::s)in
-(* thats out char parser *)
-let char_nt = caten (word_ci "#\\") (disj list_nt temp_nt) in
-let char_nt2 = pack char_nt (fun (prefix,rest) -> match ((list_to_string prefix), (list_to_string rest)) with
-    | ("#\\", "tab") -> Char '\t'
-    | ("#\\", "newline") -> Char '\n'
-    | ("#\\", "space") -> Char ' '
-    | ("#\\", "return") -> Char '\r'
-    | ("#\\", "page") -> Char '\012'
-    | ("#\\", "nul") -> Char '\000'
-    | ("#\\", c) -> Char c.[0]
-    | (_, _) -> raise X_no_match) in
-let char_tok = make_spaced_and_commented char_nt2 in char_tok;;
+  let sym_parse = pack symbol_disj_nt (fun (prefix) ->  (Symbol(list_to_string prefix))) in 
+  make_spaced_and_commented sym_parse;;
 
 (* STRING *)
 let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
@@ -141,10 +137,8 @@ let string_char = disj string_Literal_Char_nt convert_to_char_nt;;
 let star_string_char = star string_char;;
 let string_tok = pack (make_paired (char '\"') (char '\"') star_string_char) (fun s -> 
 String(list_to_string s));;
-(* let string_tok_witout = make_spaced_and_commented string_tok;; *)
 
 
-(* NADAV *)
 let nt_number = 
   let nt_sign = disj (char '+') (char '-') in
   let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e,s) -> e::s) in
@@ -177,7 +171,7 @@ let nt_number =
   let nt_number = disj nt_float signed_integer in
   let nt_number = make_spaced nt_number in
   let nt_number = make_seperated_of_comments nt_number in
-  nt_number;;
+  make_spaced_and_commented nt_number;;
 
 let nt_nil = 
   let nt_lparen = make_spaced (char (char_of_int 40)) in
@@ -188,6 +182,99 @@ let nt_nil =
   
 let make_normal_paranthesized nt = 
   make_paired (make_spaced (char (char_of_int 40))) (make_spaced (char (char_of_int 41))) nt;;
+  
+
+let do_nothing () = ();;
+
+let reverse_list lst =
+  let rec aux acc = function
+    | [] -> acc
+    | h::t -> aux (h::acc) t in
+  aux [] lst;;
+
+let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
+let nt_rparen = make_spaced_and_commented (char (char_of_int 41));; 
+let nt_dot = make_spaced_and_commented (char '.');;
+
+  
+let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number; symbol_parser; nt_empty_list; nt_not_dotted_list;
+nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
+
+    
+    and nt_empty_list exp = 
+      let no_parens = pack (nt_whitespaces) (fun exp -> Nil) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_not_dotted_list exp = 
+      let no_parens = pack (plus all_exps) (fun exps ->
+                                            List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_dotted_list exp = 
+      let nt_spaced_exp = make_spaced_and_commented all_exps in
+      let nt_car_and_dot = pack (caten nt_spaced_exp nt_dot) (fun (car, dot) -> car) in
+      let no_parens = pack (caten nt_car_and_dot nt_spaced_exp) (fun (car, cdr) -> Pair(car, cdr)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_quoted exp = 
+      let nt_quote = char (char_of_int 39) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_quasi_quote exp = 
+      let nt_quote = char (char_of_int 96) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quasiquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted_spliced exp =
+      let nt_quote = word_ci ",@" in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote-splicing"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted exp = 
+      let nt_quote = char ',' in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;;
+    
+    (*and nt_sexpr_comments = 
+      let nt_comment_prefix = make_spaced (word_ci "#;") in
+      let nt_commented_sexpr = caten nt_comment_prefix all_exps
+      let rec nt_comment = try nt_commented_sexpr
+                           with X_no_match -> nt_skip_comment in
+      nt_comment;;*)
+
+    
+    
+
+(* string MAOR *)
+(* special nots *)
+
+
+let meta_nt = disj_list [(word_ci "\r");(word_ci "\n");(word_ci "\t");(word_ci "\f");
+(word_ci "\\");(word_ci "\"")];;
+
+
+let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
+
+
+let sting_temp_nt = pack (caten string_Literal_Char_nt nt_epsilon) (fun (e,s) -> e::s);;
+
+
+let stringChar_nt = disj meta_nt sting_temp_nt;;
+
+
+let string_without_quotes = make_paired (char '\"') (char '\"') stringChar_nt;;
+
+
+let string_pareser = star string_without_quotes;;
+
+let tok_lparen =
+  let lp = char '(' in
+  let spaced= caten(caten nt_whitespaces lp) nt_whitespaces in
+  pack spaced (fun ((l, p), r) -> p);;
 
 module Reader: sig
   val read_sexpr : string -> sexpr
