@@ -3,7 +3,6 @@ open PC;;
 
 exception X_not_yet_implemented;;
 exception X_this_should_not_happen;;
-
 type number =
   | Int of int
   | Float of float;;
@@ -45,7 +44,6 @@ let make_paired nt_left nt_right nt =
   let nt = pack nt (function (e, _) -> e) in
   nt;;
 
-let nt_whitespace = const (fun ch -> ch <= ' ');;
 (* MAOR *)
 
 
@@ -60,16 +58,13 @@ let nt_line_comments =
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
   make_spaced (star nt_comments);;
 
-let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;;
+(* let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;; *)
 
-let rec nt_all_sexpr_comments = 
+(* let rec nt_all_sexpr_comments = 
   fun s ->
-  try ((word_ci "#;") s)
+  try ((word_ci "#;") s) *)
   
   
-
-
-
 
 let make_seperated_of_comments nt = make_paired nt_line_comments nt_line_comments nt;;
 
@@ -106,6 +101,7 @@ let boolean_parser =
       | "#t" -> Bool(true)
       | "#T" -> Bool(true)
       | _ -> raise X_no_match) in 
+  let last_nt = make_spaced last_nt in
   make_spaced_and_commented last_nt;;
 
 (* MAOR *)
@@ -123,6 +119,24 @@ let symbol_parser =
   let sym_parse = pack symbol_disj_nt (fun (prefix) ->  (Symbol(list_to_string prefix))) in 
   make_spaced_and_commented sym_parse;;
 
+(* STRING *)
+let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
+let backslash = char '\\';;
+let meta_list = disj_list [(char 'r');(char 'n');(char 't');(char 'f');
+(char '\\');(char '\"')];;
+let meta_chars = caten backslash meta_list;;
+let convert_to_char_nt = pack meta_chars (fun s-> match (s) with
+| (('\\','r')) -> '\r'
+| (('\\','n')) -> '\n'
+| (('\\','t')) -> '\t'
+| (('\\','f')) -> char_of_int 12
+| (('\\','\"')) -> '\"'
+| (('\\','\\')) -> '\\'
+|_ ->raise X_no_match );;
+let string_char = disj string_Literal_Char_nt convert_to_char_nt;;
+let star_string_char = star string_char;;
+let string_tok = pack (make_paired (char '\"') (char '\"') star_string_char) (fun s -> 
+String(list_to_string s));;
 
 
 let nt_number = 
