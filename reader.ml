@@ -58,7 +58,13 @@ let nt_line_comments =
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
   make_spaced (star nt_comments);;
 
-let nt_sexpr_comment = caten (make_spaced (word_ci "#;")) all_exps;;
+(*let rec nt_sexpr_comment s = 
+  let nt_start = star (word_ci "#;") in
+  let nt = caten nt_start all_exps in
+  let nt = (try nt s
+            with X_no_match -> nt_sexpr_comment s) in
+  nt;;*)
+
 
   
   
@@ -138,39 +144,52 @@ let nt_string =
   make_spaced_and_commented string_tok;;
 
 
+
+
 let nt_number = 
+  let make_nt_digits ch_from ch_to displacement =
+    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
+    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
+		      fun ch -> (Char.code ch) - delta) in
+    nt in
   let nt_sign = disj (char '+') (char '-') in
-  let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e,s) -> e::s) in
-  let nt_digits = plus (range_ci '0' '9') in
-  let nt_digits = pack nt_digits (fun digits ->
-                                    List.map (fun a -> (Char.code a) - (Char.code '0')) digits) in
+  let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e, s) -> e::s) in
+  let nt_digits = plus (make_nt_digits '0' '9' 0) in
   let nt_unsigned_integer = pack nt_digits (fun digits ->
-                                              List.fold_left (fun a b -> 10 * a + b) 0 digits) in
-  let signed_integer = pack (caten nt_sign nt_unsigned_integer) (fun (sign, integer) -> 
-                                                                  match sign with 
-                                                                  | ['+'] -> Number(Int integer)
-                                                                  | ['-'] -> Number (Int ((-1) * integer))
-                                                                  | _ -> raise X_no_match) in
-  let nt_dot = char '.' in
-  let nt_fraction = caten nt_dot nt_digits in
-  let nt_fraction = pack nt_fraction (fun (ch, digits) -> (digits, (List.length digits))) in
-  let nt_fraction = pack nt_fraction (fun (digits, length) -> 
-                                      let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
-                                      let mult = 10. ** ((float_of_int length) *. (-1.)) in
-                                      let frac = (float_of_int frac) *. mult in
-                                      frac) in
-  let nt_float = pack (caten nt_unsigned_integer nt_fraction) (fun (integer, fraction) -> 
-                                                          (float_of_int integer) +. fraction) in
-  let nt_float = caten nt_sign nt_float in 
-  let nt_float = pack (nt_float) (fun (sign, num) ->
-                                match sign with 
-                                | ['+'] -> Number(Float num)
-                                | ['-'] -> Number(Float ((float_of_int (-1)) *. num))
-                                | _ -> raise X_no_match) in
-  let nt_number = disj nt_float signed_integer in
-  let nt_number = make_spaced nt_number in
-  let nt_number = make_seperated_of_comments nt_number in
+                                                List.fold_left (fun a b -> 10 * a + b) 0 digits) in
+  let nt_integer = 
+    let nt_unsigned_sexp_integer = pack nt_unsigned_integer (fun integer -> Number(Int integer)) in
+    let nt_signed_sexp_integer = pack (caten nt_sign nt_unsigned_integer) (fun (sign, integer) ->
+                                                                      match sign with
+                                                                      | ['+'] -> Number(Int integer)
+                                                                      | ['-'] -> Number(Int((-1) * integer))
+                                                                      | _ -> raise X_no_match) in
+    let nt_integer = disj nt_unsigned_sexp_integer nt_signed_sexp_integer in
+    nt_integer in
+  let nt_float = 
+    let nt_dot = char '.' in
+    let nt_fraction = caten nt_dot nt_digits in
+    let nt_fraction = pack nt_fraction (fun (dot, digits) -> (digits, (List.length digits))) in
+    let nt_fraction = pack nt_fraction (fun (digits, length) ->
+                                          let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
+                                          let mult = 10. ** ((float_of_int length) *. (-1.)) in
+                                          let frac = (float_of_int frac) *. mult in
+                                          frac) in
+    let nt_unsigned_float = pack (caten nt_unsigned_integer nt_fraction) (fun (integer, fraction) ->
+                                                                            (float_of_int integer) +. fraction) in
+    let nt_unsigned_float_sexp = pack nt_unsigned_float (fun number -> Number(Float number)) in
+    let nt_signed_float_sexp = caten nt_sign nt_unsigned_float in
+    let nt_signed_float_sexp = pack nt_signed_float_sexp (fun (sign, num) ->
+                                                            match sign with
+                                                            | ['+'] -> Number(Float num)
+                                                            | ['-'] -> Number(Float((float_of_int (-1)) *. num))
+                                                            | _ -> raise X_no_match) in
+    let nt_float = disj nt_unsigned_float_sexp nt_signed_float_sexp in
+    nt_float in
+  let nt_number = disj nt_float nt_integer in
   make_spaced_and_commented nt_number;;
+    
+
 
 let nt_nil = 
   let nt_lparen = make_spaced (char (char_of_int 40)) in
@@ -185,12 +204,7 @@ let make_normal_paranthesized nt =
 
 let do_nothing () = ();;
 
-(*this reverse function was copied from the internet*)
-let reverse_list lst =
-  let rec aux acc = function
-    | [] -> acc
-    | h::t -> aux (h::acc) t in
-  aux [] lst;;
+
 
 let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
 let nt_rparen = make_spaced_and_commented (char (char_of_int 41));; 
@@ -208,7 +222,7 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
     
     and nt_not_dotted_list exp = 
       let no_parens = pack (plus all_exps) (fun exps ->
-                                            List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in
+                                            List.fold_left (fun a b -> Pair(b, a)) Nil (List.rev exps)) in
       let with_parens = make_normal_paranthesized no_parens in
       (make_normal_paranthesized (disj no_parens with_parens)) exp;
     
@@ -237,14 +251,19 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
     and nt_unquoted exp = 
       let nt_quote = char ',' in
       let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
-      (make_spaced_and_commented nt_quoted) exp;;
+      (make_spaced_and_commented nt_quoted) exp;
     
-    (*and nt_sexpr_comments = 
-      let nt_comment_prefix = make_spaced (word_ci "#;") in
-      let nt_commented_sexpr = caten nt_comment_prefix all_exps
-      let rec nt_comment = try nt_commented_sexpr
-                           with X_no_match -> nt_skip_comment in
-      nt_comment;;*)
+    and list_of_tags = [];
+    and ref tag = {};
+
+    and nt_tagged_exp exp =
+      let nt_not_white_space = star(const (fun ch -> ' ' < ch)) in
+      let nt_tag = make_paired (word_ci "#{") (word_ci "}=") nt_not_white_space in
+      let nt_tag = pack nt_tag (fun tag_as_list -> tag := (list_to_string tag_as_list)) in
+      nt_tag exp;;
+      
+    
+    
 
     
     
@@ -252,29 +271,6 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
 (* string MAOR *)
 (* special nots *)
 
-
-(* let meta_nt = disj_list [(word_ci "\r");(word_ci "\n");(word_ci "\t");(word_ci "\f");
-(word_ci "\\");(word_ci "\"")];;
-
-
-let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\');;
-
-
-let sting_temp_nt = pack (caten string_Literal_Char_nt nt_epsilon) (fun (e,s) -> e::s);;
-
-
-let stringChar_nt = disj meta_nt sting_temp_nt;;
-
-
-let string_without_quotes = make_paired (char '\"') (char '\"') stringChar_nt;;
-
-
-let string_pareser = star string_without_quotes;; *)
-
-let tok_lparen =
-  let lp = char '(' in
-  let spaced= caten(caten nt_whitespaces lp) nt_whitespaces in
-  pack spaced (fun ((l, p), r) -> p);;
 
 module Reader: sig
   val read_sexpr : string -> sexpr
