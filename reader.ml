@@ -172,6 +172,7 @@ let make_normal_paranthesized nt =
 
 let do_nothing () = ();;
 
+(*this reverse function was copied from the internet*)
 let reverse_list lst =
   let rec aux acc = function
     | [] -> acc
