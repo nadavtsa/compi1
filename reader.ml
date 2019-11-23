@@ -188,6 +188,14 @@ let nt_number =
     nt_float in
   let nt_number = disj nt_float nt_integer in
   make_spaced_and_commented nt_number;;
+
+  let rec make_pairs = fun lst ->
+    match lst with 
+    | e :: s when (List.length lst) > 2 -> Pair(e, (make_pairs s))
+    | e :: s when (List.length lst) = 2 -> Pair(e, (List.nth s 0))
+    | e :: [] when (List.length lst) = 1 -> e
+    | [] -> Nil;;
+
     
 
 
@@ -204,6 +212,10 @@ let make_normal_paranthesized nt =
 
 let do_nothing () = ();;
 
+let nt_not_white_space = 
+  let a = star(const (fun ch -> ' ' < ch)) in
+  make_paired (word_ci "#{") (char_ci '}') a;;
+
 
 
 let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
@@ -212,7 +224,7 @@ let nt_dot = make_spaced_and_commented (char '.');;
 
   
 let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number; symbol_parser; nt_empty_list; nt_not_dotted_list;
-nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
+nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_tagged_exp] exp
 
     
     and nt_empty_list exp = 
@@ -253,14 +265,39 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
       let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
       (make_spaced_and_commented nt_quoted) exp;
     
-    and list_of_tags = [];
-    and ref tag = {};
+    and list_of_tags = ref [];
 
     and nt_tagged_exp exp =
-      let nt_not_white_space = star(const (fun ch -> ' ' < ch)) in
-      let nt_tag = make_paired (word_ci "#{") (word_ci "}=") nt_not_white_space in
-      let nt_tag = pack nt_tag (fun tag_as_list -> tag := (list_to_string tag_as_list)) in
-      nt_tag exp;;
+      let nt_not_white_space = star(const (fun ch -> (' ' < ch) && (ch != '}'))) in
+      let nt_tag_ref_exp = 
+        let nt_tag_ref_exp = make_paired (word_ci "#{") (char '}') nt_not_white_space in
+        let nt_tag_ref_exp = pack nt_tag_ref_exp (fun ref_name_as_list -> TagRef(list_to_string ref_name_as_list)) in
+        nt_tag_ref_exp in
+      let nt_tagged_exp = make_paired (word_ci "#{") (word_ci "}") nt_not_white_space in
+      let nt_tagged_exp = pack (caten nt_tagged_exp (char (char_of_int 61))) (fun (e, eq) -> e) in
+      (*let nt_tagged_exp = pack nt_tagged_exp (fun ref_name_as_list -> 
+                                              let pred = (fun char_lst ->
+                                                          match char_lst with
+                                                          | ref_name_as_list -> true
+                                                          | _ -> false) in
+                                              match (List.exists pred !list_of_tags) with
+                                              | false -> (let a = (list_of_tags := (List.append !list_of_tags [ref_name_as_list])) in
+                                                          ref_name_as_list)
+                                              | _ -> raise X_this_should_not_happen) in*)
+      let nt_tagged_exp = pack (caten nt_tagged_exp (make_normal_paranthesized (star all_exps))) (fun (ref_name_as_list, rest_of_exp) ->
+                                                let list_of_pairs =  make_pairs rest_of_exp in
+                                                TaggedSexpr((list_to_string ref_name_as_list), list_of_pairs)) in
+      (disj nt_tagged_exp nt_tag_ref_exp) exp;; 
+
+    (*and nt_tag_ref_exp exp = 
+      let nt_not_white_space = star(const (fun ch -> (' ' < ch) && (ch != '}'))) in
+      let nt_tag_ref_exp = make_paired (word_ci "#{") (word_ci "}") nt_not_white_space in
+      let nt_tag_ref_exp = pack nt_tag_ref_exp (fun ref_name_as_list -> TagRef(list_to_string ref_name_as_list)) in
+      nt_tag_ref_exp exp;;*)
+
+
+
+
       
     
     
