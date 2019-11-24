@@ -87,6 +87,7 @@ let char_parser =
       | (_, _) -> raise X_no_match) in 
   make_spaced_and_commented char_nt2;;
 
+ 
 
 let boolean_parser = 
   let nt = disj (word_ci "#f") (word_ci "#t")  in
@@ -139,47 +140,27 @@ let nt_string =
 
 
 let nt_number = 
-  let make_nt_digits ch_from ch_to displacement =
-    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
-    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
-                      fun ch -> (Char.code ch) - delta) in
-    nt in
   let nt_sign = disj (char '+') (char '-') in
-  let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e, s) -> e::s) in
-  let nt_digits = plus (make_nt_digits '0' '9' 0) in
-  let nt_unsigned_integer = pack nt_digits (fun digits ->
-      List.fold_left (fun a b -> 10 * a + b) 0 digits) in
-  let nt_integer = 
-    let nt_unsigned_sexp_integer = pack nt_unsigned_integer (fun integer -> Number(Int integer)) in
-    let nt_signed_sexp_integer = pack (caten nt_sign nt_unsigned_integer) (fun (sign, integer) ->
-        match sign with
-        | ['+'] -> Number(Int integer)
-        | ['-'] -> Number(Int((-1) * integer))
-        | _ -> raise X_no_match) in
-    let nt_integer = disj nt_unsigned_sexp_integer nt_signed_sexp_integer in
-    nt_integer in
-  let nt_float = 
-    let nt_dot = char '.' in
-    let nt_fraction = caten nt_dot nt_digits in
-    let nt_fraction = pack nt_fraction (fun (dot, digits) -> (digits, (List.length digits))) in
-    let nt_fraction = pack nt_fraction (fun (digits, length) ->
-        let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
-        let mult = 10. ** ((float_of_int length) *. (-1.)) in
-        let frac = (float_of_int frac) *. mult in
-        frac) in
-    let nt_unsigned_float = pack (caten nt_unsigned_integer nt_fraction) (fun (integer, fraction) ->
-        (float_of_int integer) +. fraction) in
-    let nt_unsigned_float_sexp = pack nt_unsigned_float (fun number -> Number(Float number)) in
-    let nt_signed_float_sexp = caten nt_sign nt_unsigned_float in
-    let nt_signed_float_sexp = pack nt_signed_float_sexp (fun (sign, num) ->
-        match sign with
-        | ['+'] -> Number(Float num)
-        | ['-'] -> Number(Float((float_of_int (-1)) *. num))
-        | _ -> raise X_no_match) in
-    let nt_float = disj nt_unsigned_float_sexp nt_signed_float_sexp in
-    nt_float in
-  let nt_number = disj nt_float nt_integer in
-  make_spaced_and_commented nt_number;;
+  let nt_digits = plus (range_ci '0' '9') in
+  let unsigned_nt_integer = pack nt_digits (fun digits -> int_of_string(list_to_string digits)) in
+  let nt_signed_integer = pack (caten (maybe nt_sign) unsigned_nt_integer) (fun (maybe_sign, integer) ->
+  match maybe_sign with
+    | Some('+') -> Number (Int integer)
+    | Some('-') -> Number (Int ((-1) * integer))
+    | None -> Number (Int integer)) in
+  let nt_unsigned_float = pack (caten nt_digits (char '.')) (fun (digits, dot) -> List.append digits [dot]) in
+  let nt_unsigned_float = pack (caten nt_unsigned_float nt_digits) (fun (digits_and_dot, digits) ->
+            List.append digits_and_dot digits) in
+  let nt_unsigned_float = pack nt_unsigned_float (fun digits -> float_of_string(list_to_string digits)) in
+  let nt_signed_float = pack (caten (maybe nt_sign) nt_unsigned_float) (fun (maybe_sign, flt) ->
+    match maybe_sign with
+    | Some('+') -> Number (Float flt)
+    | Some('-') -> Number (Float ((float_of_int (-1)) *. flt))
+    | None -> Number (Float flt)) in
+  let nt_illegal_postfix = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
+      (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
+      ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":"); (plus (range_ci 'a' 'z')); (plus (range_ci 'A' 'Z'))] in
+make_spaced_and_commented (not_followed_by (disj nt_signed_float nt_signed_integer) nt_illegal_postfix);;
 
 let nt_nil = 
   let nt_lparen = make_spaced (char (char_of_int 40)) in
@@ -189,52 +170,32 @@ let nt_nil =
   nt_nil;;
 
 (* ******************************scientific_notation_parser***************************************** *)
-
 let scientific_notation_parser =
-  let make_nt_digits ch_from ch_to displacement =
-    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
-    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
-                    fun ch -> (Char.code ch) - delta) in
-  nt in 
   let nt_sign = disj (char '+') (char '-') in
-  let nt_sign = pack (caten nt_sign nt_epsilon) (fun (e, s) -> e::s) in
-  let nt_digits = plus (make_nt_digits '0' '9' 0)in
-  let nt_unsigned_integer = pack nt_digits (fun digits ->
-      List.fold_left (fun a b -> 10 * a + b) 0 digits)in
-  let nt_unsigned_float_from_int = pack nt_unsigned_integer (fun x-> (float_of_int x))in
-  let make_float_with_sign = pack (caten nt_sign nt_unsigned_float_from_int) (fun (sign, float) ->
-      match sign with
-      | ['+'] -> (float)
-      | ['-'] -> ((float_of_int (-1)) *. (float ))
-      | _ -> raise X_no_match) in
-
-  let make_float = disj nt_unsigned_float_from_int make_float_with_sign in
+  let nt_digits = plus (range_ci '0' '9') in
+  let unsigned_nt_integer = pack nt_digits (fun digits -> float_of_string(list_to_string digits)) in
+  let nt_signed_integer = pack (caten (maybe nt_sign) unsigned_nt_integer) (fun (maybe_sign, integer) ->
+  match maybe_sign with
+    | Some('+') -> integer
+    | Some('-') -> ((float_of_int (-1)) *. integer)
+    | None ->  integer) in
+  
   let nt_e = (word_ci "e")in
-  let scinetific_form = caten make_float (caten nt_e make_float)in
-  let num_nt = pack scinetific_form (fun (f,(e,n)) -> ((f*.( 10.** n))))in
-  let make_it_Number = pack num_nt (fun num -> Number (Float num))in
-
-  let nt_dot = char '.' in
-  let nt_fraction = caten nt_dot nt_digits in
-  let nt_fraction = pack nt_fraction (fun (dot, digits) -> (digits, (List.length digits))) in
-  let nt_fraction = pack nt_fraction (fun (digits, length) ->
-      let frac = List.fold_left (fun a b -> 10 * a + b) 0 digits in
-      let mult = 10. ** ((float_of_int length) *. (-1.)) in
-      let frac = (float_of_int frac) *. mult in
-      frac) in
-  let nt_unsigned_float = pack (caten nt_unsigned_integer nt_fraction) (fun (integer, fraction) ->
-      (float_of_int integer) +. fraction) in
-  let nt_signed_float_sexp = caten nt_sign nt_unsigned_float in
-  let nt_signed_float_sexp = pack nt_signed_float_sexp (fun (sign, num) ->
-      match sign with
-      | ['+'] -> num
-      | ['-'] -> (float_of_int (-1)) *. num
-      | _ -> raise X_no_match) in
-  let nt_float = disj_list [nt_unsigned_float ;nt_signed_float_sexp;make_float] in
-  let scinetific_form_float = caten nt_float (caten nt_e make_float)in
+  (* float *)
+  let nt_unsigned_float = pack (caten nt_digits (char '.')) (fun (digits, dot) -> List.append digits [dot]) in
+  let nt_unsigned_float = pack (caten nt_unsigned_float nt_digits) (fun (digits_and_dot, digits) ->
+            List.append digits_and_dot digits) in
+  let nt_unsigned_float = pack nt_unsigned_float (fun digits -> float_of_string(list_to_string digits)) in
+  let nt_signed_float = pack (caten (maybe nt_sign) nt_unsigned_float) (fun (maybe_sign, flt) ->
+    match maybe_sign with
+    | Some('+') ->  flt
+    | Some('-') -> ((float_of_int (-1)) *. flt)
+    | None -> flt) in
+  let float = disj nt_signed_float nt_signed_integer in
+  let scinetific_form_float = caten float (caten nt_e nt_signed_integer)in
   let num_nt_float = pack scinetific_form_float (fun (f,(e,n)) -> ((f*.( 10.** n))))in
   let scientific = pack num_nt_float (fun num -> Number (Float num)) in
-  make_spaced_and_commented scientific;;
+  make_spaced_and_commented scientific;; 
 
 
 let make_normal_paranthesized nt = 
@@ -295,13 +256,38 @@ and nt_unquoted exp =
   let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
   (make_spaced_and_commented nt_quoted) exp;;
 
+let nt_all_bases base ch1 ch2 =
+  let make_NT_digit ch_from ch_to displacement =
+    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
+    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
+		      fun ch -> (Char.code ch) - delta) in
+    nt in
+    let nt = disj (make_NT_digit '0' '9' 0) (make_NT_digit ch1 ch2 10) in
+   
+  let nt = plus nt in
+  let nt = pack nt (fun digits ->
+		    List.fold_left (fun a b -> base * a + b) 0 digits) in
+  nt;;
 
+let nt_base36 = caten (word_ci "36r") (nt_all_bases 36 'a' 'z') ;;
+let nt_radix = 
+  let make_NT_digit ch_from ch_to displacement =
+    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
+    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
+		      fun ch -> (Char.code ch) - delta) in
+    nt in 
+  let nt_digits = make_NT_digit '0' '9' 0 in
+  let nt_letters_digits = make_NT_digit 'a' 'z' 10 in
 
-(* let rec nt_sexp_comment s = 
-   let ntx = caten (word_ci "#;") all_exps in
-   let nty = pack ntx (fun _ -> ()) in
+  let nt = pack (caten (char '#') (plus nt_digits)) (fun (_, digits) ->
+                                                  List.fold_left (fun a b -> a * 10 + b) 0 digits) in
+  let nt_base = pack (caten nt (char_ci 'r')) (fun (base, _) -> base) in
+  let nt_radix_ = pack (caten nt_base (star (disj nt_digits nt_letters_digits)))
+                  (fun (base, digits) ->
+                    List.fold_left (fun a b -> a * base + b) 0 digits) in
+  nt;;
 
-   nty s;; *)
+  
 
 
 
