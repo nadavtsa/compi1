@@ -145,14 +145,15 @@ let nt_string =
 
 
 let nt_number = 
-  let nt_sign = disj (char '+') (char '-') in
+  let nt_sign = disj (char_ci '+') (char_ci '-') in
   let nt_digits = plus (range_ci '0' '9') in
   let unsigned_nt_integer = pack nt_digits (fun digits -> int_of_string(list_to_string digits)) in
   let nt_signed_integer = pack (caten (maybe nt_sign) unsigned_nt_integer) (fun (maybe_sign, integer) ->
                                                                   match maybe_sign with
                                                                   | Some('+') -> Number (Int integer)
                                                                   | Some('-') -> Number (Int ((-1) * integer))
-                                                                  | None -> Number (Int integer)) in
+                                                                  | None -> Number (Int integer)
+                                                                  | _ -> raise X_no_match) in
   let nt_unsigned_float = pack (caten nt_digits (char '.')) (fun (digits, dot) -> List.append digits [dot]) in
   let nt_unsigned_float = pack (caten nt_unsigned_float nt_digits) (fun (digits_and_dot, digits) ->
                                                                       List.append digits_and_dot digits) in
@@ -161,7 +162,8 @@ let nt_number =
                                                                   match maybe_sign with
                                                                   | Some('+') -> Number (Float flt)
                                                                   | Some('-') -> Number (Float ((float_of_int (-1)) *. flt))
-                                                                  | None -> Number (Float flt)) in
+                                                                  | None -> Number (Float flt)
+                                                                  | _ -> raise X_no_match) in
   let nt_illegal_postfix = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
       (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
       ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":"); (plus (range_ci 'a' 'z')); (plus (range_ci 'A' 'Z'))] in
@@ -174,8 +176,33 @@ let nt_radix =
       let nt = pack nt (let delta = (Char.code ch_from) - displacement in
             fun ch -> (Char.code ch) - delta) in
       nt in
-  let nt_reg = plus (make_NT_digit '0' '9' 0) in
-  let nt_rad = plus (make_NT_digit 'a' 'z')
+  let nt_digits = (make_NT_digit '0' '9' 0) in
+  let nt_chars_digits = plus (range_ci '0' '9') in 
+  let nt_integer_digits_and_letters = plus (disj_list [(make_NT_digit 'a' 'z' 10); (make_NT_digit 'A' 'Z' 10); nt_digits]) in
+  let nt_float_digits_and_letters = 
+    let nt = pack (caten nt_integer_digits_and_letters (char_ci '.')) (fun (digits, dot) -> digits) in
+    let nt = caten nt nt_integer_digits_and_letters in
+    nt in
+  let nt_hash = char_ci '#' in
+  let nt_base = 
+    let nt = pack nt_chars_digits (fun digits -> int_of_string(list_to_string digits)) in
+    let nt = pack (caten nt_hash nt) (fun (hash, base) -> base) in
+    let nt = pack (caten nt (char_ci 'r')) (fun (base, r) -> base) in
+    nt in
+  let nt_radix = 
+    let nt_integer_radix = pack (caten nt_base nt_integer_digits_and_letters) (fun (base, digits_list) ->
+                                Number (Int (List.fold_left (fun a b -> a * base + b) 0 digits_list))) in
+    let nt_float_radix = pack (caten nt_base nt_float_digits_and_letters) 
+                          (fun (base, (integer_digits, fraction_digits)) ->
+                            let integer_part = float_of_int(List.fold_left (fun a b -> a * base + b) 0 integer_digits) in
+                            let fraction_part = 
+                              (let length = float_of_int(List.length fraction_digits * (-1)) in
+                              let fraction = float_of_int(List.fold_left (fun a b -> a * base + b) 0 fraction_digits) in
+                              let fraction = fraction *. (float_of_int(base) ** length) in
+                              fraction) in
+                            Number (Float (integer_part +. fraction_part))) in
+    (disj nt_float_radix nt_integer_radix) in
+  make_spaced_and_commented nt_radix;; 
 
 
 
@@ -184,7 +211,8 @@ let nt_radix =
     | e :: s when (List.length lst) > 2 -> Pair(e, (make_pairs s))
     | e :: s when (List.length lst) = 2 -> Pair(e, (List.nth s 0))
     | e :: [] when (List.length lst) = 1 -> e
-    | [] -> Nil;;
+    | [] -> Nil
+    | _ -> raise X_no_match;;
   
   let rec check_double_tagged = fun name lst ->
   match lst with 
@@ -223,7 +251,7 @@ let nt_dot = make_spaced_and_commented (char '.');;
 
   
 let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number; symbol_parser; nt_empty_list; nt_not_dotted_list;
-nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_tagged_exp] exp
+nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_tagged_exp; nt_sexp_comments] exp
 
     
     and nt_empty_list exp = 
@@ -281,7 +309,12 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_
                                                 let legal_list = check_double_tagged name rest_of_exp in
                                                 let list_of_pairs =  make_pairs legal_list in
                                                 TaggedSexpr(name, list_of_pairs)) in
-      (make_spaced_and_commented (disj nt_tagged_exp nt_tag_ref_exp)) exp;; 
+      (make_spaced_and_commented (disj nt_tagged_exp nt_tag_ref_exp)) exp;
+    
+    and nt_sexp_comments exp = 
+      let nt_start = word_ci "#;" in
+      (pack (caten nt_start all_exps) (fun a -> match a with
+)) exp;;
 
 
 
