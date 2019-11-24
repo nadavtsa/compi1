@@ -179,6 +179,7 @@ let scientific_notation_parser =
     | Some('+') -> integer
     | Some('-') -> ((float_of_int (-1)) *. integer)
     | None ->  integer) in
+    
   
   let nt_e = (word_ci "e")in
   (* float *)
