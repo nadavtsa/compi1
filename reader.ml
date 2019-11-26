@@ -56,9 +56,9 @@ let nt_line_comments =
   let nt_semicolon = char ';' in
   let nt_rest_of_comment = star (const (fun ch -> (ch != (char_of_int 4)) && (ch != (char_of_int 10)))) in
   let nt_comments = pack (caten nt_semicolon nt_rest_of_comment) (fun (e1, e2) -> e1 :: e2) in
-  make_spaced (star nt_comments);;
+  make_spaced nt_comments;;
 
-let make_seperated_of_comments nt = make_paired nt_line_comments nt_line_comments nt;;
+let make_seperated_of_comments nt = make_paired (star nt_line_comments) (star nt_line_comments) nt;;
 
 let make_spaced_and_commented nt = make_seperated_of_comments (make_spaced nt);;
 
@@ -113,7 +113,7 @@ let symbol_parser =
   let symbol_disj_nt = pack symbol_disj_nt (fun (list_of_lists) ->
       List.flatten list_of_lists) in
   let sym_parse = pack symbol_disj_nt (fun (prefix) ->  (Symbol(list_to_string prefix))) in 
-  make_spaced_and_commented sym_parse;;
+  make_spaced_and_commented (not_followed_by sym_parse (char '@'));;
 
 
 
@@ -140,10 +140,10 @@ let nt_string =
 
 let nt_radix = 
   let make_NT_digit ch_from ch_to displacement =
-    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
-    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
-                      fun ch -> (Char.code ch) - delta) in
-    nt in
+      let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
+      let nt = pack nt (let delta = (Char.code ch_from) - displacement in
+            fun ch -> (Char.code ch) - delta) in
+      nt in
   let nt_digits = (make_NT_digit '0' '9' 0) in
   let nt_chars_digits = plus (range_ci '0' '9') in 
   let nt_integer_digits_and_letters = plus (disj_list [(make_NT_digit 'a' 'z' 10); (make_NT_digit 'A' 'Z' 10); nt_digits]) in
@@ -157,20 +157,33 @@ let nt_radix =
     let nt = pack (caten nt_hash nt) (fun (hash, base) -> base) in
     let nt = pack (caten nt (char_ci 'r')) (fun (base, r) -> base) in
     nt in
+  let nt_sign = maybe (disj (char '+') (char '-')) in
   let nt_radix = 
-    let nt_integer_radix = pack (caten nt_base nt_integer_digits_and_letters) (fun (base, digits_list) ->
-        Number (Int (List.fold_left (fun a b -> a * base + b) 0 digits_list))) in
-    let nt_float_radix = pack (caten nt_base nt_float_digits_and_letters) 
-        (fun (base, (integer_digits, fraction_digits)) ->
-           let integer_part = float_of_int(List.fold_left (fun a b -> a * base + b) 0 integer_digits) in
-           let fraction_part = 
-             (let length = float_of_int(List.length fraction_digits * (-1)) in
-              let fraction = float_of_int(List.fold_left (fun a b -> a * base + b) 0 fraction_digits) in
-              let fraction = fraction *. (float_of_int(base) ** length) in
-              fraction) in
-           Number (Float (integer_part +. fraction_part))) in
+    let nt_integer_radix = pack (caten nt_base (caten nt_sign nt_integer_digits_and_letters)) (fun (base, (sign, digits_list)) ->
+                                let value = (List.fold_left (fun a b -> a * base + b) 0 digits_list) in
+                                match sign with
+                                | Some('+') -> Number (Int value)
+                                | Some('-') -> Number (Int ((-1) * value))
+                                | None -> Number (Int value)
+                                | _ -> raise X_no_match) in
+    let nt_float_radix = pack (caten nt_base (caten nt_sign nt_float_digits_and_letters)) 
+                          (fun (base, (sign, (integer_digits, fraction_digits))) ->
+                            let integer_part = float_of_int(List.fold_left (fun a b -> a * base + b) 0 integer_digits) in
+                            let fraction_part = 
+                              (let length = float_of_int(List.length fraction_digits * (-1)) in
+                              let fraction = float_of_int(List.fold_left (fun a b -> a * base + b) 0 fraction_digits) in
+                              let fraction = fraction *. (float_of_int(base) ** length) in
+                              fraction) in
+                              let value = integer_part +. fraction_part in
+                              match sign with
+                              | Some ('+') -> Number (Float value)
+                              | Some ('-') -> Number (Float ((float_of_int (-1)) *. value))
+                              | None -> Number (Float value)
+                              | _ -> raise X_no_match) in
     (disj nt_float_radix nt_integer_radix) in
   make_spaced_and_commented nt_radix;; 
+
+
 
 
 
@@ -203,7 +216,7 @@ let rec make_pairs = fun lst ->
     match lst with 
     | e :: s when (List.length lst) > 2 -> Pair(e, (make_pairs s))
     | e :: s when (List.length lst) = 2 -> Pair(e, (List.nth s 0))
-    | e :: [] when (List.length lst) = 1 -> e
+    | e :: [] when (List.length lst) = 1 -> Pair(e, Nil)
     | [] -> Nil
     | _ -> raise X_no_match;;
   
@@ -267,11 +280,11 @@ let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
 let nt_rparen = make_spaced_and_commented (char (char_of_int 41));; 
 let nt_dot = make_spaced_and_commented (char '.');;
 
-let nt_number = disj_list[scientific_notation_parser; nt_radix; nt_normal_number];;
+let nt_number = make_spaced_and_commented(not_followed_by (disj_list[scientific_notation_parser; nt_radix; nt_normal_number]) (char '@'));;
 
 
 let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number;nt_string; symbol_parser; nt_empty_list; nt_not_dotted_list;
-                                  nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
+                                nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced;nt_tagged_exp; nt_sexp_comments] exp
 
 
 and nt_empty_list exp = 
@@ -353,9 +366,13 @@ end
     else Printf.sprintf "|%s|" str;;
 
 
-  let read_sexpr string = raise X_not_yet_implemented ;;
+  let read_sexpr string =
+    match (all_exps (string_to_list string)) with
+    | (sexp, lst) -> sexp;;
 
-  let read_sexprs string = raise X_not_yet_implemented;;
+  let read_sexprs string = 
+    match ((plus all_exps) (string_to_list string)) with
+    | (sexps, chs) -> sexps;;
 
 
 
