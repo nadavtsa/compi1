@@ -122,6 +122,8 @@ let symbol_parser =
   let sym_parse = pack symbol_disj_nt (fun (prefix) ->  (Symbol(list_to_string prefix))) in 
   make_spaced_and_commented sym_parse;;
 
+  
+
 (* STRING *)
 let nt_string = 
   let string_Literal_Char_nt = const (fun ch -> ch != '\"' && ch != '\\') in
@@ -220,12 +222,6 @@ let nt_radix =
   | TaggedSexpr(a1, a2) :: s when a1 = name -> raise X_this_should_not_happen 
   | e :: s -> e :: (check_double_tagged name s);;
 
-   
-(*let rec nt_sexp_comment str =
-  let nt_start = word_ci "#;" in
-  let nt_simple = pack (caten nt_start nt_number) (fun (start, num) -> num) in
-  let nt_nested =*) 
-
 
 let nt_nil = 
   let nt_lparen = make_spaced (char (char_of_int 40)) in
@@ -292,7 +288,6 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_
       let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
       (make_spaced_and_commented nt_quoted) exp;
     
-    and list_of_tags = ref [];
 
     and nt_tagged_exp exp =
       let nt_not_white_space = star(const (fun ch -> (' ' < ch) && (ch != '}'))) in
@@ -313,8 +308,11 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_
     
     and nt_sexp_comments exp = 
       let nt_start = word_ci "#;" in
-      (pack (caten nt_start all_exps) (fun a -> match a with
-)) exp;;
+      let nt = pack (caten nt_start all_exps) (fun (hash, exp) -> exp) in
+      let nt = pack (caten nt all_exps) (fun (exp1, exp2) -> exp2) in
+      (make_spaced_and_commented nt) exp;;
+  
+   
 
 
 
