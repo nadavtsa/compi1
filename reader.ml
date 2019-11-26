@@ -221,17 +221,32 @@ let nt_radix =
 
   let rec make_pairs = fun lst ->
     match lst with 
-    | e :: s when (List.length lst) > 2 -> Pair(e, (make_pairs s))
-    | e :: s when (List.length lst) = 2 -> Pair(e, (List.nth s 0))
+    | e :: s when (List.length lst) > 1 -> Pair(e, (make_pairs s))
     | e :: [] when (List.length lst) = 1 -> Pair(e, Nil)
     | [] -> Nil
     | _ -> raise X_no_match;;
   
+  let rec make_pairs_no_nil = fun lst ->
+    match lst with 
+    | e :: s when (List.length lst) > 1 -> Pair(e, (make_pairs_no_nil s))
+    | e :: [] when (List.length lst) = 1 -> e
+    | _ -> raise X_no_match;;
+  
+  
+  
   let rec check_double_tagged = fun name lst ->
-  match lst with 
-  | [] -> []
-  | TaggedSexpr(a1, a2) :: s when a1 = name -> raise X_this_should_not_happen 
-  | e :: s -> e :: (check_double_tagged name s);;
+    let rec check_nested_exp = fun exp ->
+                              match exp with
+                              | TaggedSexpr(a1, a2) when a1 = name -> raise X_this_should_not_happen
+                              | TaggedSexpr(a1, a2) -> TaggedSexpr(a1, (check_nested_exp a2))
+                              | Pair(a1, a2) -> Pair((check_nested_exp a1), (check_nested_exp a2))
+                              | _ -> exp in 
+    match lst with 
+    | [] -> []
+    | TaggedSexpr(a1, a2) :: s when a1 = name -> raise X_this_should_not_happen 
+    | TaggedSexpr(a1, a2) :: s -> TaggedSexpr(a1, (check_nested_exp a2)) :: (check_double_tagged name s)
+    | Pair(a1, a2) :: s -> Pair((check_nested_exp a1), (check_nested_exp a2)) :: (check_double_tagged name s)
+    | e :: s -> e :: (check_double_tagged name s);;
 
 
 let nt_nil = 
@@ -306,19 +321,29 @@ nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced; nt_
         let nt_tag_ref_exp = make_paired (word_ci "#{") (char '}') nt_not_white_space in
         let nt_tag_ref_exp = pack nt_tag_ref_exp (fun ref_name_as_list -> TagRef(list_to_string ref_name_as_list)) in
         nt_tag_ref_exp in
-      let nt_proper_list = make_normal_paranthesized (star (disj all_exps nt_tag_ref_exp)) in
-      let nt_improper_list = make_normal_paranthesized ()
-      let nt_all_not_paranthesized = disj all_exps nt_tag_ref_exp in
+      let nt_proper_list = make_normal_paranthesized (star (disj all_exps nt_tag_ref_exp)) in 
+      let nt_improper_list = 
+        let nt_dot = char '.' in
+        let nt = pack (caten (disj all_exps nt_tag_ref_exp) nt_dot) (fun (exp, dot) -> exp) in
+        let nt = pack (caten nt (disj all_exps nt_tag_ref_exp)) (fun (exp1, exp2) -> [exp1; exp2]) in
+        make_normal_paranthesized nt in
+      let nt_all_not_paranthesized = pack (disj all_exps nt_tag_ref_exp) (fun (exp) -> [exp]) in
       let nt_tagged_exp = make_paired (word_ci "#{") (word_ci "}") nt_not_white_space in
       let nt_tagged_exp = pack (caten nt_tagged_exp (char (char_of_int 61))) (fun (e, eq) -> e) in
-      let nt_tagged_exp_proper_list = pack (caten nt_tagged_exp nt_proper_list (fun (ref_name_as_list, rest_of_exp) ->
-                                                let name = list_to_string ref_name_as_list in
-                                                let legal_list = check_double_tagged name rest_of_exp in
-                                                let list_of_pairs =  make_pairs legal_list in
-                                                TaggedSexpr(name, list_of_pairs)) in
-      let nt_tagged_exp_improper_list =
-        let nt =  
-
+      let nt_tagged_exp = 
+        let nt_1 = pack (caten nt_tagged_exp nt_proper_list) 
+                                    (fun (ref_name_as_list, rest_of_exp) ->
+                                      let name = list_to_string ref_name_as_list in
+                                      let legal_list = check_double_tagged name rest_of_exp in
+                                      let list_of_pairs = make_pairs legal_list in
+                                      TaggedSexpr(name, list_of_pairs)) in
+        let nt_2 = pack (caten nt_tagged_exp (disj_list [nt_all_not_paranthesized; nt_improper_list])) 
+                                    (fun (ref_name_as_list, rest_of_exp) ->
+                                      let name = list_to_string ref_name_as_list in
+                                      let legal_list = check_double_tagged name rest_of_exp in
+                                      let list_of_pairs = make_pairs_no_nil legal_list in
+                                      TaggedSexpr(name, list_of_pairs)) in
+        disj nt_1 nt_2 in
       (make_spaced_and_commented (disj nt_tagged_exp nt_tag_ref_exp)) exp;
     
     and nt_sexp_comments exp = 
