@@ -138,8 +138,43 @@ let nt_string =
       String(list_to_string s)) in
   make_spaced_and_commented string_tok;;
 
+let nt_radix = 
+  let make_NT_digit ch_from ch_to displacement =
+    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
+    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
+                      fun ch -> (Char.code ch) - delta) in
+    nt in
+  let nt_digits = (make_NT_digit '0' '9' 0) in
+  let nt_chars_digits = plus (range_ci '0' '9') in 
+  let nt_integer_digits_and_letters = plus (disj_list [(make_NT_digit 'a' 'z' 10); (make_NT_digit 'A' 'Z' 10); nt_digits]) in
+  let nt_float_digits_and_letters = 
+    let nt = pack (caten nt_integer_digits_and_letters (char_ci '.')) (fun (digits, dot) -> digits) in
+    let nt = caten nt nt_integer_digits_and_letters in
+    nt in
+  let nt_hash = char_ci '#' in
+  let nt_base = 
+    let nt = pack nt_chars_digits (fun digits -> int_of_string(list_to_string digits)) in
+    let nt = pack (caten nt_hash nt) (fun (hash, base) -> base) in
+    let nt = pack (caten nt (char_ci 'r')) (fun (base, r) -> base) in
+    nt in
+  let nt_radix = 
+    let nt_integer_radix = pack (caten nt_base nt_integer_digits_and_letters) (fun (base, digits_list) ->
+        Number (Int (List.fold_left (fun a b -> a * base + b) 0 digits_list))) in
+    let nt_float_radix = pack (caten nt_base nt_float_digits_and_letters) 
+        (fun (base, (integer_digits, fraction_digits)) ->
+           let integer_part = float_of_int(List.fold_left (fun a b -> a * base + b) 0 integer_digits) in
+           let fraction_part = 
+             (let length = float_of_int(List.length fraction_digits * (-1)) in
+              let fraction = float_of_int(List.fold_left (fun a b -> a * base + b) 0 fraction_digits) in
+              let fraction = fraction *. (float_of_int(base) ** length) in
+              fraction) in
+           Number (Float (integer_part +. fraction_part))) in
+    (disj nt_float_radix nt_integer_radix) in
+  make_spaced_and_commented nt_radix;; 
 
-let nt_number = 
+
+
+let nt_normal_number = 
   let nt_sign = disj (char '+') (char '-') in
   let nt_digits = plus (range_ci '0' '9') in
   let unsigned_nt_integer = pack nt_digits (fun digits -> int_of_string(list_to_string digits)) in
@@ -147,7 +182,8 @@ let nt_number =
       match maybe_sign with
       | Some('+') -> Number (Int integer)
       | Some('-') -> Number (Int ((-1) * integer))
-      | None -> Number (Int integer)) in
+      | None -> Number (Int integer)
+      | _ -> raise X_no_match) in
   let nt_unsigned_float = pack (caten nt_digits (char '.')) (fun (digits, dot) -> List.append digits [dot]) in
   let nt_unsigned_float = pack (caten nt_unsigned_float nt_digits) (fun (digits_and_dot, digits) ->
       List.append digits_and_dot digits) in
@@ -156,11 +192,26 @@ let nt_number =
       match maybe_sign with
       | Some('+') -> Number (Float flt)
       | Some('-') -> Number (Float ((float_of_int (-1)) *. flt))
-      | None -> Number (Float flt)) in
+      | None -> Number (Float flt)
+      | _ -> raise X_no_match) in
   let nt_illegal_postfix = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
                                       (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
                                      ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":"); (plus (range_ci 'a' 'z')); (plus (range_ci 'A' 'Z'))] in
   make_spaced_and_commented (not_followed_by (disj nt_signed_float nt_signed_integer) nt_illegal_postfix);;
+
+let rec make_pairs = fun lst ->
+    match lst with 
+    | e :: s when (List.length lst) > 2 -> Pair(e, (make_pairs s))
+    | e :: s when (List.length lst) = 2 -> Pair(e, (List.nth s 0))
+    | e :: [] when (List.length lst) = 1 -> e
+    | [] -> Nil
+    | _ -> raise X_no_match;;
+  
+  let rec check_double_tagged = fun name lst ->
+  match lst with 
+  | [] -> []
+  | TaggedSexpr(a1, a2) :: s when a1 = name -> raise X_this_should_not_happen 
+  | e :: s -> e :: (check_double_tagged name s);;
 
 let nt_nil = 
   let nt_lparen = make_spaced (char (char_of_int 40)) in
@@ -178,7 +229,8 @@ let scientific_notation_parser =
       match maybe_sign with
       | Some('+') -> integer
       | Some('-') -> ((float_of_int (-1)) *. integer)
-      | None ->  integer) in
+      | None ->  integer
+      | _ -> raise X_no_match) in
 
 
   let nt_e = (word_ci "e")in
@@ -191,7 +243,8 @@ let scientific_notation_parser =
       match maybe_sign with
       | Some('+') ->  flt
       | Some('-') -> ((float_of_int (-1)) *. flt)
-      | None -> flt) in
+      | None -> flt
+      | _ -> raise X_no_match) in
   let float = disj nt_signed_float nt_signed_integer in
   let scinetific_form_float = caten float (caten nt_e nt_signed_integer)in
   let num_nt_float = pack scinetific_form_float (fun (f,(e,n)) -> ((f*.( 10.** n))))in
@@ -214,93 +267,78 @@ let nt_lparen = make_spaced_and_commented (char (char_of_int 40));;
 let nt_rparen = make_spaced_and_commented (char (char_of_int 41));; 
 let nt_dot = make_spaced_and_commented (char '.');;
 
+let nt_number = disj_list[scientific_notation_parser; nt_radix; nt_normal_number];;
+
 
 let rec all_exps exp = disj_list [boolean_parser; char_parser; nt_number;nt_string; symbol_parser; nt_empty_list; nt_not_dotted_list;
                                   nt_dotted_list; nt_quoted; nt_quasi_quote; nt_unquoted; nt_unquoted_spliced] exp
 
 
 and nt_empty_list exp = 
-  let no_parens = pack (nt_whitespaces) (fun exp -> Nil) in
-  let with_parens = make_normal_paranthesized no_parens in
-  (make_normal_paranthesized (disj no_parens with_parens)) exp;
+      let no_parens = pack (nt_whitespaces) (fun exp -> Nil) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_not_dotted_list exp = 
+      let no_parens = pack (plus all_exps) (fun exps ->
+                                            List.fold_left (fun a b -> Pair(b, a)) Nil (List.rev exps)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_dotted_list exp = 
+      let nt_spaced_exp = make_spaced_and_commented all_exps in
+      let nt_car_and_dot = pack (caten nt_spaced_exp nt_dot) (fun (car, dot) -> car) in
+      let no_parens = pack (caten nt_car_and_dot nt_spaced_exp) (fun (car, cdr) -> Pair(car, cdr)) in
+      let with_parens = make_normal_paranthesized no_parens in
+      (make_normal_paranthesized (disj no_parens with_parens)) exp;
+    
+    and nt_quoted exp = 
+      let nt_quote = char (char_of_int 39) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_quasi_quote exp = 
+      let nt_quote = char (char_of_int 96) in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quasiquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted_spliced exp =
+      let nt_quote = word_ci ",@" in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote-splicing"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
+    and nt_unquoted exp = 
+      let nt_quote = char ',' in
+      let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
+      (make_spaced_and_commented nt_quoted) exp;
+    
 
-and nt_not_dotted_list exp = 
-  let no_parens = pack (plus all_exps) (fun exps ->
-      List.fold_left (fun a b -> Pair(b, a)) Nil (reverse_list exps)) in
-  let with_parens = make_normal_paranthesized no_parens in
-  (make_normal_paranthesized (disj no_parens with_parens)) exp;
-
-and nt_dotted_list exp = 
-  let nt_spaced_exp = make_spaced_and_commented all_exps in
-  let nt_car_and_dot = pack (caten nt_spaced_exp nt_dot) (fun (car, dot) -> car) in
-  let no_parens = pack (caten nt_car_and_dot nt_spaced_exp) (fun (car, cdr) -> Pair(car, cdr)) in
-  let with_parens = make_normal_paranthesized no_parens in
-  (make_normal_paranthesized (disj no_parens with_parens)) exp;
-
-and nt_quoted exp = 
-  let nt_quote = char (char_of_int 39) in
-  let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quote"), Pair(exp, Nil))) in
-  (make_spaced_and_commented nt_quoted) exp;
-
-and nt_quasi_quote exp = 
-  let nt_quote = char (char_of_int 96) in
-  let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("quasiquote"), Pair(exp, Nil))) in
-  (make_spaced_and_commented nt_quoted) exp;
-
-and nt_unquoted_spliced exp =
-  let nt_quote = word_ci ",@" in
-  let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote-splicing"), Pair(exp, Nil))) in
-  (make_spaced_and_commented nt_quoted) exp;
-
-and nt_unquoted exp = 
-  let nt_quote = char ',' in
-  let nt_quoted = pack (caten nt_quote all_exps) (fun (quote, exp) -> Pair(Symbol("unquote"), Pair(exp, Nil))) in
-  (make_spaced_and_commented nt_quoted) exp;;
-
-let nt_all_bases base ch1 ch2 =
-  let make_NT_digit ch_from ch_to displacement =
-    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
-    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
-                      fun ch -> (Char.code ch) - delta) in
-    nt in
-  let nt = disj (make_NT_digit '0' '9' 0) (make_NT_digit ch1 ch2 10) in
-
-  let nt = plus nt in
-  let nt = pack nt (fun digits ->
-      List.fold_left (fun a b -> base * a + b) 0 digits) in
-  nt;;
-
-let nt_base36 = caten (word_ci "36r") (nt_all_bases 36 'a' 'z') ;;
-let nt_radix = 
-  let make_NT_digit ch_from ch_to displacement =
-    let nt = const (fun ch -> ch_from <= ch && ch <= ch_to) in
-    let nt = pack nt (let delta = (Char.code ch_from) - displacement in
-                      fun ch -> (Char.code ch) - delta) in
-    nt in 
-  let nt_digits = make_NT_digit '0' '9' 0 in
-  let nt_letters_digits = make_NT_digit 'a' 'z' 10 in
-
-  let nt = pack (caten (char '#') (plus nt_digits)) (fun (_, digits) ->
-      List.fold_left (fun a b -> a * 10 + b) 0 digits) in
-  let nt_base = pack (caten nt (char_ci 'r')) (fun (base, _) -> base) in
-  let nt_radix_ = pack (caten nt_base (star (disj nt_digits nt_letters_digits)))
-      (fun (base, digits) ->
-         List.fold_left (fun a b -> a * base + b) 0 digits) in
-  nt;;
-
-
-
-
-
+    and nt_tagged_exp exp =
+      let nt_not_white_space = star(const (fun ch -> (' ' < ch) && (ch != '}'))) in
+      let nt_tag_ref_exp = 
+        let nt_tag_ref_exp = make_paired (word_ci "#{") (char '}') nt_not_white_space in
+        let nt_tag_ref_exp = pack nt_tag_ref_exp (fun ref_name_as_list -> TagRef(list_to_string ref_name_as_list)) in
+        nt_tag_ref_exp in
+      let nt_all_paranthesized = make_normal_paranthesized (star (disj all_exps nt_tag_ref_exp)) in
+      let nt_all_not_paranthesized = star (disj all_exps nt_tag_ref_exp) in
+      let nt_tagged_exp = make_paired (word_ci "#{") (word_ci "}") nt_not_white_space in
+      let nt_tagged_exp = pack (caten nt_tagged_exp (char (char_of_int 61))) (fun (e, eq) -> e) in
+      let nt_tagged_exp = pack (caten nt_tagged_exp (disj nt_all_paranthesized nt_all_not_paranthesized)) (fun (ref_name_as_list, rest_of_exp) ->
+                                                let name = list_to_string ref_name_as_list in
+                                                let legal_list = check_double_tagged name rest_of_exp in
+                                                let list_of_pairs =  make_pairs legal_list in
+                                                TaggedSexpr(name, list_of_pairs)) in
+      (make_spaced_and_commented (disj nt_tagged_exp nt_tag_ref_exp)) exp;
+    
+    and nt_sexp_comments exp = 
+      let nt_start = word_ci "#;" in
+      let nt = pack (caten nt_start all_exps) (fun (hash, exp) -> exp) in
+      let nt = pack (caten nt all_exps) (fun (exp1, exp2) -> exp2) in
+      (make_spaced_and_commented nt) exp;;
 
 
 (* string MAOR *)
 (* special nots *)
-
-let tok_lparen =
-  let lp = char '(' in
-  let spaced= caten(caten nt_whitespaces lp) nt_whitespaces in
-  pack spaced (fun ((l, p), r) -> p);;
 
 module Reader: sig
   val read_sexpr : string -> sexpr
