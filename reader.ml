@@ -344,7 +344,7 @@ and nt_string exp =
 
 
 and symbol_parser exp = 
-  let symbol_list_nt = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");
+  let symbol_list_nt = disj_list [(word_ci "!");(word_ci "$");(word_ci "^");(word_ci ":");
                                   (word_ci "*");(word_ci "-");(word_ci "_");(word_ci "=");(word_ci "+");(word_ci "<")
                                  ;(word_ci "<");(word_ci "?");(word_ci "/");(word_ci ":")] in
   let a_z_nt_capital = plus(range_ci 'A' 'Z') in
